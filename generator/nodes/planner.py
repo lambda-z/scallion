@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
+# from langchain_openai import ChatOpenAI, OpenAI
+from openai import OpenAI
 
 from generator.config import settings
 from generator.prompts import render_prompt
 from generator.state import GraphState
-
 
 # 这里是一个简化的 policy brief（你也可以在调用时动态注入更完整的规则）
 _POLICY_BRIEF = "遵守软件工程与安全最佳实践；不得输出危险指令；仅生成与任务相关的文件内容。"
@@ -50,19 +50,31 @@ def planner_node(state: GraphState) -> GraphState:
         iter_left=max(0, 3 - revision_count),
     )
 
-    llm = ChatOpenAI(
-        model=settings.openai_model,
+    # llm = ChatOpenAI(
+    #     model=settings.openai_model,
+    #     api_key=settings.openai_api_key,
+    #     temperature=0.2,
+    # )
+
+    llm = OpenAI(
         api_key=settings.openai_api_key,
-        temperature=0.2,
+        base_url=settings.base_url,
     )
 
     # 关键点：把整个 XML prompt 当作 HumanMessage 发给模型
     # 因为模板已经在 system 区块里规定“只输出 JSON”。
-    resp = llm.invoke([HumanMessage(content=prompt_text)])
+    # resp = llm.invoke([HumanMessage(content=prompt_text)])
+
+    resp = llm.chat.completions.create(
+        model=settings.openai_model,
+        messages=[{'role': 'user', 'content': HumanMessage(content=prompt_text).content}]
+    )
+
+    print("Planner Node LLM Response:", resp.choices[0].message.content)
 
     return {
         **state,
         "prompt_text": prompt_text,
-        "raw_json_text": resp.content,
+        "raw_json_text": resp.choices[0].message.content,
         "revision_count": revision_count + (1 if last_error else 0),
     }
